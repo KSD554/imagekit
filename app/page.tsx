@@ -110,7 +110,7 @@ export default function Home() {
       try {
         console.log("🚀 Début de l'upload vers ImageKit...");
 
-        // FIX 1: Add cache-busting to ensure fresh auth
+        // 1. Cache-buster pour forcer une nouvelle authentification
         const cacheBuster = Date.now();
         const authResponse = await fetch(`/api/upload-auth?t=${cacheBuster}`);
 
@@ -139,29 +139,20 @@ export default function Home() {
           throw new Error("Token d'authentification expiré");
         }
 
-        if (timeUntilExpire > 3600) {
-          // Plus d'1 heure
-          throw new Error(
-            "Token d'authentification expire trop loin dans le futur"
-          );
-        }
-
+        // 2. Log du temps restant avant expiration
         console.log(`⏰ Token expire dans ${timeUntilExpire} secondes`);
 
-        // FIX 2: Generate client-side token as fallback
-        const clientToken = crypto.randomUUID
-          ? crypto.randomUUID()
-          : Date.now().toString(36) + Math.random().toString(36).substring(2);
+        // 3. Upload IMMÉDIAT après réception des credentials
+        const uniqueFileName = `img-${Date.now()}-${file.name}`;
+        console.log("📝 Nom de fichier unique:", uniqueFileName);
 
-        // Upload using ImageKit SDK
         const uploadResponse = await upload({
           file,
-          fileName: file.name,
-          token: authData.token || clientToken,
+          fileName: uniqueFileName, // Nom unique pour éviter les conflits
+          token: authData.token,
           expire: authData.expire,
           signature: authData.signature,
           publicKey: authData.publicKey,
-          // Optional: Track upload progress
           onProgress: (event) => {
             const progress = Math.round((event.loaded / event.total) * 100);
             console.log(`📊 Progression upload: ${progress}%`);
@@ -180,14 +171,33 @@ export default function Home() {
       } catch (error) {
         console.error("❌ Erreur upload:", error);
 
-        // FIX 3: Detect token reuse error specifically
-        let errorMessage =
-          error instanceof Error ? error.message : "Erreur d'upload inconnue";
-        if (errorMessage.includes("token has been used before")) {
-          errorMessage = "Erreur de jeton unique. Veuillez réessayer.";
+        // 4. Détection précise des erreurs
+        let errorMessage = "Erreur inconnue";
+        let isTokenError = false;
+
+        if (error instanceof Error) {
+          console.error("Détails erreur:", error.message);
+
+          if (error.message.includes("expiré")) {
+            errorMessage = "Token expiré, veuillez réessayer";
+            isTokenError = true;
+          } else if (error.message.includes("used before")) {
+            errorMessage = "Token déjà utilisé, réessayez";
+            isTokenError = true;
+          } else {
+            errorMessage = error.message;
+          }
         }
 
         setUploadError(errorMessage);
+
+        // 5. Réessai automatique pour les erreurs de token
+        if (isTokenError && uploadedImage) {
+          console.log("🔄 Tentative de réessai automatique...");
+          setTimeout(() => {
+            onDrop([uploadedImage]);
+          }, 1000);
+        }
       } finally {
         setIsUploading(false);
       }
@@ -206,7 +216,7 @@ export default function Home() {
 
     setIsProcessing(true);
     setProcessingProgress(0);
-    setIsImageLoading(false); // Reset any previous loading state
+    setIsImageLoading(false);
 
     const progressInterval = setInterval(() => {
       setProcessingProgress((prev) => {
@@ -229,13 +239,10 @@ export default function Home() {
       let baseImageUrl = "";
 
       if (isUsingDemo) {
-        // Use demo image
         baseImageUrl = currentDemoImage;
       } else if (uploadedImageUrl) {
-        // Use uploaded image
         baseImageUrl = uploadedImageUrl;
       } else {
-        // Fallback to demo if upload failed
         baseImageUrl = demoImages[0].url;
         console.log("Fallback: Using demo image since upload failed");
       }
@@ -245,24 +252,10 @@ export default function Home() {
         transformationParams
       );
 
-      console.log(
-        "Transformation applied to:",
-        isUsingDemo
-          ? "Demo image"
-          : uploadedImageUrl
-          ? "Your uploaded image"
-          : "Demo fallback"
-      );
       console.log("Transformed URL:", transformedUrl);
 
-      // AI transformations can take 10-60 seconds to process
-      // Show immediate result, but it might take time to load
-      console.log(
-        "⏱️ Note: AI transformations can take 10-60 seconds to process"
-      );
-
       setProcessedImageUrl(transformedUrl);
-      setIsImageLoading(true); // Start loading state for transformed image
+      setIsImageLoading(true);
       setProcessingProgress(100);
       setIsProcessing(false);
     } catch (error) {
@@ -293,7 +286,6 @@ export default function Home() {
       }
     });
 
-    // Reset processed image and loading state when changing selections
     if (processedImageUrl) {
       setProcessedImageUrl("");
       setIsImageLoading(false);
@@ -341,7 +333,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-display font-bold mb-4">
             Studio d'Images IA
@@ -352,7 +343,6 @@ export default function Home() {
         </div>
 
         {!uploadedImage ? (
-          /* Upload State */
           <Card className="mx-auto">
             <CardContent className="p-8">
               <div
@@ -406,7 +396,6 @@ export default function Home() {
             </CardContent>
           </Card>
         ) : isProcessing ? (
-          /* Processing State */
           <Card className="mx-auto">
             <CardContent className="p-8 text-center">
               <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6">
@@ -424,11 +413,8 @@ export default function Home() {
             </CardContent>
           </Card>
         ) : (
-          /* Main Interface */
           <div className="space-y-8">
-            {/* Image and Controls */}
             <div className="grid lg:grid-cols-2 gap-8">
-              {/* Image Preview */}
               <Card>
                 <CardHeader>
                   <CardTitle className="font-heading">Votre image</CardTitle>
@@ -460,7 +446,8 @@ export default function Home() {
                           ❌ Échec du téléversement: {uploadError}
                         </p>
                         <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                          {uploadError.includes("jeton unique") ? (
+                          {uploadError.includes("expiré") ||
+                          uploadError.includes("utilisé") ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -488,7 +475,6 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              {/* Transformations */}
               <Card>
                 <CardHeader>
                   <CardTitle className="font-heading">Outils IA</CardTitle>
@@ -528,7 +514,6 @@ export default function Home() {
               </Card>
             </div>
 
-            {/* Action Button */}
             {selectedTransformations.length > 0 && (
               <div className="text-center">
                 <Button
@@ -546,7 +531,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Results */}
             {processedImageUrl && (
               <div className="space-y-6">
                 <Card className="border-green-200 dark:border-green-800">
@@ -601,7 +585,6 @@ export default function Home() {
                     </CardHeader>
                     <CardContent>
                       <div className="bg-transparent-pattern rounded p-4 aspect-square flex items-center justify-center relative">
-                        {/* Loading spinner overlay */}
                         {isImageLoading && (
                           <div className="absolute inset-0 bg-background/80 rounded flex items-center justify-center z-10">
                             <div className="text-center space-y-3">
@@ -633,9 +616,7 @@ export default function Home() {
                               "❌ Échec du chargement de l'image transformée:",
                               processedImageUrl
                             );
-                            console.error("Error event:", e);
-                            setIsImageLoading(false); // Hide loading spinner
-                            // Don't fallback automatically - let user see the error
+                            setIsImageLoading(false);
                             e.currentTarget.style.border = "2px solid red";
                             e.currentTarget.style.background =
                               "rgba(255,0,0,0.1)";
@@ -645,7 +626,6 @@ export default function Home() {
                         />
                       </div>
 
-                      {/* Debug info */}
                       <div
                         className={`mt-3 p-2 rounded text-center ${
                           isImageLoading
