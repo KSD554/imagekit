@@ -12,22 +12,14 @@ export async function GET() {
       );
     }
 
-    // Option 1: Laisser ImageKit gérer l'expiration automatiquement
-    const authParams = getUploadAuthParams({
-      privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
-      publicKey: process.env.IMAGEKIT_PUBLIC_KEY as string
-      // Pas de paramètre expire - ImageKit utilisera sa valeur par défaut
-    });
-
-    // Option 2: Si vous voulez contrôler l'expiration (commentée)
-    /*
-    const expireTimestamp = Math.floor(Date.now() / 1000) + (30 * 60); // 30 minutes
+    // Générer un timestamp d'expiration unique pour chaque requête
+    const expireTimestamp = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
+    
     const authParams = getUploadAuthParams({
       privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY as string,
-      expire: expireTimestamp
+      expire: expireTimestamp  // Crucial: Unique par requête
     });
-    */
 
     console.log("Paramètres d'authentification générés:", {
       token: authParams.token.substring(0, 10) + "...",
@@ -37,11 +29,18 @@ export async function GET() {
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY?.substring(0, 10) + "..."
     });
 
-    return Response.json({
+    // Retourner la réponse avec des headers anti-cache
+    return new Response(JSON.stringify({
       token: authParams.token,
       expire: authParams.expire,
       signature: authParams.signature,
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, max-age=0'  // Empêcher la mise en cache
+      }
     });
 
   } catch (error) {

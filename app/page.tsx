@@ -110,8 +110,10 @@ export default function Home() {
       try {
         console.log("🚀 Début de l'upload vers ImageKit...");
 
-        // Get authentication parameters
-        const authResponse = await fetch("/api/upload-auth");
+        // FIX 1: Add cache-busting to ensure fresh auth
+        const cacheBuster = Date.now();
+        const authResponse = await fetch(`/api/upload-auth?t=${cacheBuster}`);
+
         if (!authResponse.ok) {
           const errorText = await authResponse.text();
           console.error("Erreur auth response:", errorText);
@@ -146,11 +148,16 @@ export default function Home() {
 
         console.log(`⏰ Token expire dans ${timeUntilExpire} secondes`);
 
+        // FIX 2: Generate client-side token as fallback
+        const clientToken = crypto.randomUUID
+          ? crypto.randomUUID()
+          : Date.now().toString(36) + Math.random().toString(36).substring(2);
+
         // Upload using ImageKit SDK
         const uploadResponse = await upload({
           file,
           fileName: file.name,
-          token: authData.token,
+          token: authData.token || clientToken,
           expire: authData.expire,
           signature: authData.signature,
           publicKey: authData.publicKey,
@@ -172,10 +179,15 @@ export default function Home() {
         }
       } catch (error) {
         console.error("❌ Erreur upload:", error);
-        setUploadError(
-          error instanceof Error ? error.message : "Erreur d'upload inconnue"
-        );
-        // Upload failed, but we can still continue with demo
+
+        // FIX 3: Detect token reuse error specifically
+        let errorMessage =
+          error instanceof Error ? error.message : "Erreur d'upload inconnue";
+        if (errorMessage.includes("token has been used before")) {
+          errorMessage = "Erreur de jeton unique. Veuillez réessayer.";
+        }
+
+        setUploadError(errorMessage);
       } finally {
         setIsUploading(false);
       }
@@ -448,7 +460,19 @@ export default function Home() {
                           ❌ Échec du téléversement: {uploadError}
                         </p>
                         <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                          Les transformations utiliseront une image de démo.
+                          {uploadError.includes("jeton unique") ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onDrop([uploadedImage])}
+                              className="mt-2"
+                            >
+                              <RotateCcw className="w-3 h-3 mr-1" />
+                              Réessayer l'upload
+                            </Button>
+                          ) : (
+                            "Les transformations utiliseront une image de démo."
+                          )}
                         </p>
                       </div>
                     )}
