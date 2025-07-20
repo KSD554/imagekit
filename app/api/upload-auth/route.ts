@@ -4,11 +4,12 @@ import { getUploadAuthParams } from "@imagekit/next/server";
 export async function GET() {
   try {
     // Generate authentication parameters using ImageKit SDK
+    const expireTimestamp = Math.floor(Date.now() / 1000) + 30 * 60; // maintenant + 30 min
     const { token, expire, signature } = getUploadAuthParams({
       privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY as string,
       // Optional: expire time in seconds (max 1 hour)
-      expire: 30 * 60, // 30 minutes
+      expire: expireTimestamp,
     });
 
     return Response.json({
