@@ -609,12 +609,21 @@ export default function Home() {
                   </Card>
                 </div>
 
-                <div className="flex gap-4 justify-center">
-                  <Button onClick={downloadImage} size="lg">
+                <div className="flex flex-col sm:flex-row gap-4 justify-center w-full">
+                  <Button
+                    onClick={downloadImage}
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
                     <Download className="w-4 h-4 mr-2" />
                     Télécharger
                   </Button>
-                  <Button onClick={reset} variant="outline" size="lg">
+                  <Button
+                    onClick={reset}
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Nouvelle image
                   </Button>
