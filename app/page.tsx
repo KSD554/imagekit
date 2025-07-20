@@ -56,6 +56,7 @@ export default function Home() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(false);
+  const [uploadError, setUploadError] = useState<string>("");
 
   // Add test function to window for debugging
   useEffect(() => {
@@ -102,44 +103,78 @@ export default function Home() {
       setCurrentDemoImage("");
       setIsUsingDemo(false);
       setUploadedImageUrl("");
+      setUploadError("");
 
       // Upload to ImageKit using the official SDK
       setIsUploading(true);
       try {
+        console.log("🚀 Début de l'upload vers ImageKit...");
+
         // Get authentication parameters
         const authResponse = await fetch("/api/upload-auth");
         if (!authResponse.ok) {
-          throw new Error("Échec de l’authentification de l’upload");
+          const errorText = await authResponse.text();
+          console.error("Erreur auth response:", errorText);
+          throw new Error(
+            `Échec de l'authentification de l'upload: ${authResponse.status}`
+          );
         }
 
-        const { token, expire, signature, publicKey } =
-          await authResponse.json();
+        const authData = await authResponse.json();
+        console.log("✅ Paramètres d'authentification reçus:", {
+          hasToken: !!authData.token,
+          hasSignature: !!authData.signature,
+          expire: authData.expire,
+          expireDate: new Date(authData.expire * 1000).toISOString(),
+          publicKey: authData.publicKey?.substring(0, 10) + "...",
+        });
+
+        // Vérifier la validité du timestamp expire
+        const currentTime = Math.floor(Date.now() / 1000);
+        const timeUntilExpire = authData.expire - currentTime;
+
+        if (timeUntilExpire <= 0) {
+          throw new Error("Token d'authentification expiré");
+        }
+
+        if (timeUntilExpire > 3600) {
+          // Plus d'1 heure
+          throw new Error(
+            "Token d'authentification expire trop loin dans le futur"
+          );
+        }
+
+        console.log(`⏰ Token expire dans ${timeUntilExpire} secondes`);
 
         // Upload using ImageKit SDK
         const uploadResponse = await upload({
           file,
           fileName: file.name,
-          token,
-          expire,
-          signature,
-          publicKey,
+          token: authData.token,
+          expire: authData.expire,
+          signature: authData.signature,
+          publicKey: authData.publicKey,
           // Optional: Track upload progress
           onProgress: (event) => {
-            // Could add progress tracking here if needed
-            console.log(
-              `Upload progress: ${(event.loaded / event.total) * 100}%`
-            );
+            const progress = Math.round((event.loaded / event.total) * 100);
+            console.log(`📊 Progression upload: ${progress}%`);
           },
         });
 
+        console.log("📤 Réponse upload ImageKit:", uploadResponse);
+
         if (uploadResponse.url) {
           setUploadedImageUrl(uploadResponse.url);
-          console.log("Image uploaded to ImageKit:", uploadResponse.url);
+          console.log("✅ Image uploadée vers ImageKit:", uploadResponse.url);
+          setUploadError("");
         } else {
           throw new Error("Upload response missing URL");
         }
       } catch (error) {
-        console.error("Upload error:", error);
+        console.error("❌ Erreur upload:", error);
+        setUploadError(
+          error instanceof Error ? error.message : "Erreur d'upload inconnue"
+        );
         // Upload failed, but we can still continue with demo
       } finally {
         setIsUploading(false);
@@ -234,6 +269,7 @@ export default function Home() {
     setProcessedImageUrl("");
     setSelectedTransformations([]);
     setIsUsingDemo(true);
+    setUploadError("");
   };
 
   const toggleTransformation = (transformationId: string) => {
@@ -275,6 +311,7 @@ export default function Home() {
     setUploadedImageUrl("");
     setIsUploading(false);
     setIsImageLoading(false);
+    setUploadError("");
   };
 
   // Get main transformations (most popular ones)
@@ -295,10 +332,10 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-display font-bold mb-4">
-            Studio d’Images IA
+            Studio d'Images IA
           </h1>
           <p className="text-muted-foreground font-sans">
-            Transformez vos images avec l’IA
+            Transformez vos images avec l'IA
           </p>
         </div>
 
@@ -328,7 +365,7 @@ export default function Home() {
                         : "Téléchargez une image"}
                     </h3>
                     <p className="text-muted-foreground font-sans">
-                      JPG, PNG, WEBP jusqu’à 10 Mo
+                      JPG, PNG, WEBP jusqu'à 10 Mo
                     </p>
                   </div>
 
@@ -397,18 +434,21 @@ export default function Home() {
                       <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
                         <p className="text-sm text-green-800 dark:text-green-200">
                           ✅ Image téléversée ! Les transformations IA
-                          s’appliqueront à votre image.
+                          s'appliqueront à votre image.
                         </p>
                       </div>
                     )}
                   {!isUsingDemo &&
                     uploadedImage &&
                     !isUploading &&
-                    !uploadedImageUrl && (
+                    !uploadedImageUrl &&
+                    uploadError && (
                       <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
                         <p className="text-sm text-red-800 dark:text-red-200">
-                          ❌ Échec du téléversement. Les transformations
-                          utiliseront une image de démo.
+                          ❌ Échec du téléversement: {uploadError}
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                          Les transformations utiliseront une image de démo.
                         </p>
                       </div>
                     )}
@@ -495,10 +535,10 @@ export default function Home() {
                     </h3>
                     <p className="text-muted-foreground font-sans">
                       {isUsingDemo
-                        ? "L’image de démonstration a été transformée"
+                        ? "L'image de démonstration a été transformée"
                         : uploadedImageUrl
                         ? "Votre image téléversée a été transformée"
-                        : "Transformation démontrée sur une image d’exemple"}
+                        : "Transformation démontrée sur une image d'exemple"}
                     </p>
                   </CardContent>
                 </Card>
@@ -559,11 +599,14 @@ export default function Home() {
                           alt="Transformed"
                           className="max-w-full max-h-full object-contain rounded"
                           onLoad={() => {
+                            console.log(
+                              "✅ Image transformée chargée avec succès"
+                            );
                             setIsImageLoading(false);
                           }}
                           onError={(e) => {
                             console.error(
-                              "❌ Échec du chargement de l’image transformée:",
+                              "❌ Échec du chargement de l'image transformée:",
                               processedImageUrl
                             );
                             console.error("Error event:", e);
@@ -597,11 +640,11 @@ export default function Home() {
                         )}
                       </div>
 
-                      {!isUsingDemo && !uploadedImageUrl && (
+                      {!isUsingDemo && !uploadedImageUrl && uploadError && (
                         <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded text-center">
                           <p className="text-xs text-amber-700 dark:text-amber-300">
-                            Résultat de la démo – échec du téléversement,
-                            affichage de la transformation exemple
+                            Résultat de la démo – échec du téléversement:{" "}
+                            {uploadError}
                           </p>
                         </div>
                       )}
@@ -610,25 +653,24 @@ export default function Home() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 justify-center w-full">
-  <Button
-    onClick={downloadImage}
-    size="lg"
-    className="w-full sm:w-auto"
-  >
-    <Download className="w-4 h-4 mr-2" />
-    Télécharger
-  </Button>
-  <Button
-    onClick={reset}
-    variant="outline"
-    size="lg"
-    className="w-full sm:w-auto"
-  >
-    <RotateCcw className="w-4 h-4 mr-2" />
-    Nouvelle image
-  </Button>
-</div>
-
+                  <Button
+                    onClick={downloadImage}
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Télécharger
+                  </Button>
+                  <Button
+                    onClick={reset}
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Nouvelle image
+                  </Button>
+                </div>
               </div>
             )}
           </div>
