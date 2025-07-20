@@ -332,13 +332,17 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <div className="flex gap-4 justify-center pt-4">
-                    <Button onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4 w-full">
+                    <Button
+                      className="w-full sm:w-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Upload className="w-4 h-4 mr-2" />
                       Choisir un fichier
                     </Button>
                     <Button
                       variant="outline"
+                      className="w-full sm:w-auto"
                       onClick={(e) => {
                         e.stopPropagation();
                         useDemoImage();
